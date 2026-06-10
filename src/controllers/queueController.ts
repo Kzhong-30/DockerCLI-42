@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Op, Transaction } from 'sequelize';
 import db from '../models';
 import dayjs from 'dayjs';
+import { APPOINTMENT_CONFIG } from '../config/constants';
 
 export const getDoctorQueue = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -33,20 +34,23 @@ export const getDoctorQueue = async (req: Request, res: Response): Promise<void>
         const appointments = await db.Appointment.findAll({
           where: {
             scheduleId: schedule.id,
-            status: { [Op.in]: ['confirmed', 'pending', 'completed'] },
+            status: { [Op.in]: ['pending', 'confirmed', 'completed', 'no_show'] },
           },
-          include: [{ model: db.Patient, as: 'patient' }],
-          order: [['queueNumber', 'ASC']],
+          include: [
+        { model: db.Patient, as: 'patient' },
+        { model: db.Slot, as: 'slot' },
+          ],
+          order: [[{ model: db.Slot, as: 'slot' }, 'slotNumber', 'ASC']],
         });
 
         const currentAppointment = appointments.find(
           (a) => a.status === 'confirmed'
-        ) || appointments[0];
-
+        );
         const confirmedList = appointments.filter((a) => a.status === 'confirmed');
         const pendingList = appointments.filter((a) => a.status === 'pending');
         const completedList = appointments.filter((a) => a.status === 'completed');
 
+        const noShowList = appointments.filter((a) => a.status === 'no_show');
         const totalSlots = schedule.capacity;
         const bookedSlots = appointments.length;
         const availableSlots = totalSlots - bookedSlots;
@@ -60,25 +64,27 @@ export const getDoctorQueue = async (req: Request, res: Response): Promise<void>
           totalSlots,
           bookedSlots,
           availableSlots,
+          currentCallNumber: schedule.currentCallNumber || 0,
           currentCalling: currentAppointment
             ? {
-                queueNumber: currentAppointment.queueNumber,
+                slotNumber: (currentAppointment as any).slot?.slotNumber,
                 appointmentNo: currentAppointment.appointmentNo,
                 patientName: (currentAppointment as any).patient?.name,
               }
             : null,
-          waitingCount: confirmedList.length + pendingList.length,
+          waitingCount: pendingList.length,
           completedCount: completedList.length,
+          noShowCount: noShowList.length,
           confirmedList: confirmedList.map((a) => ({
             id: a.id,
-            queueNumber: a.queueNumber,
+            slotNumber: (a as any).slot?.slotNumber,
             appointmentNo: a.appointmentNo,
             patientName: (a as any).patient?.name,
             status: a.status,
           })),
           pendingList: pendingList.map((a) => ({
             id: a.id,
-            queueNumber: a.queueNumber,
+            slotNumber: (a as any).slot?.slotNumber,
             appointmentNo: a.appointmentNo,
             patientName: (a as any).patient?.name,
           })),
@@ -117,31 +123,31 @@ export const callNext = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const appointments = await db.Appointment.findAll({
+    const nextAppointment = await db.Appointment.findOne({
       where: {
         scheduleId,
-        status: { [Op.in]: ['confirmed', 'pending'] },
+        status: 'pending',
       },
-      include: [{ model: db.Patient, as: 'patient' }],
-      order: [['queueNumber', 'ASC']],
+      include: [
+        { model: db.Patient, as: 'patient' },
+        { model: db.Slot, as: 'slot' },
+      ],
+      order: [[{ model: db.Slot, as: 'slot' }, 'slotNumber', 'ASC']],
       transaction,
     });
 
-    if (appointments.length === 0) {
+    if (!nextAppointment) {
       res.status(404).json({ success: false, message: '当前没有等待中的预约' });
       return;
     }
 
-    const pendingAppointment = appointments.find((a) => a.status === 'pending');
-    let targetAppointment;
 
-    if (pendingAppointment) {
-      targetAppointment = pendingAppointment;
-      targetAppointment.status = 'confirmed';
-      await targetAppointment.save({ transaction });
-    } else {
-      targetAppointment = appointments[0];
-    }
+    nextAppointment.status = 'confirmed';
+    await nextAppointment.save({ transaction });
+
+    const slotNumber = (nextAppointment as any).slot?.slotNumber || 0;
+    schedule.currentCallNumber = slotNumber;
+    await schedule.save({ transaction });
 
     await transaction.commit();
 
@@ -149,10 +155,10 @@ export const callNext = async (req: Request, res: Response): Promise<void> => {
       success: true,
       message: '叫号成功',
       data: {
-        id: targetAppointment.id,
-        queueNumber: targetAppointment.queueNumber,
-        appointmentNo: targetAppointment.appointmentNo,
-        patientName: (targetAppointment as any).patient?.name,
+        id: nextAppointment.id,
+        slotNumber: slotNumber,
+        appointmentNo: nextAppointment.appointmentNo,
+        patientName: (nextAppointment as any).patient?.name,
         timeSlot: schedule.timeSlot,
       },
     });
@@ -216,6 +222,22 @@ export const markNoShow = async (req: Request, res: Response): Promise<void> => 
     if (patient) {
       patient.noShowCount = (patient.noShowCount || 0) + 1;
       await patient.save({ transaction });
+
+      if (patient.noShowCount >= APPOINTMENT_CONFIG.MAX_NO_SHOW_COUNT) {
+        patient.isBlacklisted = true;
+        await patient.save({ transaction });
+
+        await db.Blacklist.create(
+          {
+            patientId: patient.id,
+            reason: `累计爽约 ${patient.noShowCount} 次，自动加入黑名单`,
+            startDate: dayjs().format('YYYY-MM-DD'),
+            endDate: dayjs().add(APPOINTMENT_CONFIG.BLACKLIST_DAYS, 'day').format('YYYY-MM-DD'),
+            isActive: true,
+          },
+          { transaction }
+        );
+      }
     }
 
     await transaction.commit();

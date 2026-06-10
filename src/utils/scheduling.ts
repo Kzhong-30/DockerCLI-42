@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { Transaction } from 'sequelize';
 import db from '../models';
 import { Schedule } from '../models/Schedule';
 import { Holiday } from '../models/Holiday';
@@ -83,7 +84,7 @@ export function calculateSlotTimes(
   return slots;
 }
 
-export async function generateSlotsForSchedule(schedule: Schedule): Promise<void> {
+export async function generateSlotsForSchedule(schedule: Schedule, transaction?: Transaction): Promise<void> {
   const date = schedule.date;
 
   if (await isHoliday(date)) {
@@ -105,7 +106,7 @@ export async function generateSlotsForSchedule(schedule: Schedule): Promise<void
       endTime: slotTimes[i].endTime,
       status: 'available',
       price: price,
-    });
+    }, { transaction });
   }
 }
 

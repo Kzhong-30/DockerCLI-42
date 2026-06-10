@@ -73,7 +73,7 @@ export const createSchedule = async (req: Request, res: Response): Promise<void>
         { transaction }
       );
 
-      await generateSlotsForSchedule(schedule);
+      await generateSlotsForSchedule(schedule, transaction);
 
       createdSchedules.push(schedule);
     }

@@ -17,6 +17,7 @@ export interface ScheduleAttributes {
   repeatWeekdays?: string;
   isCancelled: boolean;
   cancelReason?: string;
+  currentCallNumber?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -37,6 +38,7 @@ export class Schedule extends Model<ScheduleAttributes, ScheduleCreationAttribut
   public repeatWeekdays?: string;
   public isCancelled!: boolean;
   public cancelReason?: string;
+  public currentCallNumber?: number;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -99,6 +101,11 @@ Schedule.init(
     cancelReason: {
       type: DataTypes.STRING(500),
       allowNull: true,
+    },
+    currentCallNumber: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
     },
   },
   {

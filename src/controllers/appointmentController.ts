@@ -156,7 +156,7 @@ export const createAppointment = async (req: Request, res: Response): Promise<vo
         scheduleId: slot.scheduleId,
         doctorId: slot.doctorId,
         queueNumber,
-        status: 'confirmed',
+        status: 'pending',
         symptoms,
       },
       { transaction }
@@ -255,32 +255,6 @@ export const cancelAppointment = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const slotDate = dayjs((appointment as any).slot.date + ' ' + (appointment as any).slot.startTime);
-    const hoursDiff = slotDate.diff(dayjs(), 'hour');
-
-    if (hoursDiff < APPOINTMENT_CONFIG.MIN_CANCEL_HOURS) {
-      const patient = await db.Patient.findByPk(appointment.patientId, { transaction });
-      if (patient) {
-        patient.noShowCount = (patient.noShowCount || 0) + 1;
-        await patient.save({ transaction });
-
-        if (patient.noShowCount >= APPOINTMENT_CONFIG.MAX_NO_SHOW_COUNT) {
-          patient.isBlacklisted = true;
-          await patient.save({ transaction });
-
-          await db.Blacklist.create(
-            {
-              patientId: patient.id,
-              reason: `累计爽约 ${patient.noShowCount} 次，自动加入黑名单`,
-              startDate: dayjs().format('YYYY-MM-DD'),
-              endDate: dayjs().add(APPOINTMENT_CONFIG.BLACKLIST_DAYS, 'day').format('YYYY-MM-DD'),
-              isActive: true,
-            },
-            { transaction }
-          );
-        }
-      }
-    }
 
     appointment.status = 'cancelled';
     appointment.cancelReason = reason || '患者主动取消';
