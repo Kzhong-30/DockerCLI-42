@@ -69,10 +69,30 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('数据库连接成功');
 
-    await sequelize.sync();
-    console.log('数据库模型同步完成');
 
-    await seedIfEmpty();
+    try {
+      await sequelize.sync({ alter: true });
+      console.log('数据库模型同步完成（alter模式）');
+    } catch (alterError) {
+      console.warn('alter模式同步失败，尝试普通同步:', (alterError as Error).message);
+      try {
+        await sequelize.sync();
+        console.log('数据库模型同步完成（普通模式）');
+      } catch (syncError) {
+        console.warn('普通同步失败，尝试强制重建:', (syncError as Error).message);
+        await sequelize.sync({ force: true });
+        console.log('数据库模型同步完成（强制重建模式）');
+      }
+    }
+
+
+
+    try {
+      await seedIfEmpty();
+    } catch (seedError) {
+      console.error('种子数据初始化失败:', (seedError as Error).message);
+    }
+
 
     app.listen(PORT, () => {
       console.log(`\n========================================`);

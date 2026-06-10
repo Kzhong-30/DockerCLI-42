@@ -2,6 +2,7 @@ import sequelize from './config/database';
 import './models';
 import db from './models';
 import dayjs from 'dayjs';
+import { generateSlotsForSchedule } from './utils/scheduling';
 
 export async function initSeedData() {
   try {
@@ -64,7 +65,6 @@ export async function initSeedData() {
       { doctorName: '王医生', date: today.add(2, 'day').format('YYYY-MM-DD'), timeSlot: 'afternoon' as const, startTime: '14:00', endTime: '17:30', appointmentType: 'expert' as const, capacity: 12 },
     ];
 
-    const { generateSlotsForSchedule } = require('./utils/scheduling');
 
     for (const sData of schedulesData) {
       const schedule = await db.Schedule.create({
@@ -107,7 +107,6 @@ export async function initSeedData() {
 export async function seedIfEmpty() {
   const deptCount = await db.Department.count();
   if (deptCount > 0) return;
-  const { generateSlotsForSchedule } = require('./utils/scheduling');
 
   console.log('开始初始化测试数据...');
 
@@ -183,6 +182,6 @@ export async function seedIfEmpty() {
 
 if (require.main === module) {
   initSeedData().then(() => {
-  process.exit(0);
+    process.exit(0);
 });
 }

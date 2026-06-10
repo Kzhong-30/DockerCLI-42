@@ -37,8 +37,8 @@ export const getDoctorQueue = async (req: Request, res: Response): Promise<void>
             status: { [Op.in]: ['pending', 'confirmed', 'completed', 'no_show'] },
           },
           include: [
-        { model: db.Patient, as: 'patient' },
-        { model: db.Slot, as: 'slot' },
+            { model: db.Patient, as: 'patient' },
+            { model: db.Slot, as: 'slot' },
           ],
           order: [[{ model: db.Slot, as: 'slot' }, 'slotNumber', 'ASC']],
         });
