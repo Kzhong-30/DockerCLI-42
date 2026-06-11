@@ -98,8 +98,20 @@ async function startServer() {
         
         try {
           const dbPath = path.join(process.cwd(), 'hospital.db');
-          const backupPath = path.join(process.cwd(), 'hospital.db.backup');
           if (fs.existsSync(dbPath)) {
+            const backupDir = process.cwd();
+            const existingBackups = fs.readdirSync(backupDir).filter(f => f.startsWith('hospital.db.backup.'));
+            const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            for (const oldBackup of existingBackups) {
+              const oldPath = path.join(backupDir, oldBackup);
+              const stat = fs.statSync(oldPath);
+              if (stat.mtimeMs < sevenDaysAgo) {
+                fs.unlinkSync(oldPath);
+                console.log('清理旧备份:', oldBackup);
+              }
+            }
+            const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+            const backupPath = path.join(backupDir, `hospital.db.backup.${timestamp}`);
             fs.copyFileSync(dbPath, backupPath);
             console.log('数据库备份完成:', backupPath);
           }

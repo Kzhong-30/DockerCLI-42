@@ -94,20 +94,19 @@ export async function generateSlotsForSchedule(schedule: Schedule, transaction?:
   const slotTimes = calculateSlotTimes(schedule.startTime, schedule.endTime, schedule.capacity);
   const price = APPOINTMENT_TYPE_PRICE[schedule.appointmentType] || 20;
 
-  for (let i = 0; i < slotTimes.length; i++) {
-    await db.Slot.create({
-      scheduleId: schedule.id,
-      doctorId: schedule.doctorId,
-      date: date,
-      timeSlot: schedule.timeSlot,
-      appointmentType: schedule.appointmentType,
-      slotNumber: i + 1,
-      startTime: slotTimes[i].startTime,
-      endTime: slotTimes[i].endTime,
-      status: 'available',
-      price: price,
-    }, { transaction });
-  }
+  const slotsData = slotTimes.map((slotTime, i) => ({
+    scheduleId: schedule.id,
+    doctorId: schedule.doctorId,
+    date: date,
+    timeSlot: schedule.timeSlot,
+    appointmentType: schedule.appointmentType,
+    slotNumber: i + 1,
+    startTime: slotTime.startTime,
+    endTime: slotTime.endTime,
+    status: 'available' as const,
+    price: price,
+  }));
+  await db.Slot.bulkCreate(slotsData, { transaction });
 }
 
 export function generateAppointmentNo(): string {
