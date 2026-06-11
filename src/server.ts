@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import * as fs from 'fs';
+import * as path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import sequelize from './config/database';
 import swaggerSpec from './config/swagger';
@@ -71,8 +73,17 @@ async function startServer() {
 
 
     try {
-      await sequelize.sync({ alter: true });
-      console.log('数据库模型同步完成（alter模式）');
+      const [tables] = await sequelize.query("SELECT name FROM sqlite_master WHERE type='table' AND name='departments'");
+      const departmentsExists = Array.isArray(tables) && tables.length > 0;
+      
+      if (departmentsExists) {
+        await sequelize.sync({ alter: true });
+        console.log('数据库模型同步完成（alter模式）');
+      } else {
+        console.log('检测到空库，跳过alter模式直接使用普通同步');
+        await sequelize.sync();
+        console.log('数据库模型同步完成（普通模式）');
+      }
     } catch (alterError) {
       console.warn('alter模式同步失败，尝试普通同步:', (alterError as Error).message);
       try {
@@ -80,6 +91,22 @@ async function startServer() {
         console.log('数据库模型同步完成（普通模式）');
       } catch (syncError) {
         console.warn('普通同步失败，尝试强制重建:', (syncError as Error).message);
+        
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('生产环境禁止使用force模式同步数据库');
+        }
+        
+        try {
+          const dbPath = path.join(process.cwd(), 'hospital.db');
+          const backupPath = path.join(process.cwd(), 'hospital.db.backup');
+          if (fs.existsSync(dbPath)) {
+            fs.copyFileSync(dbPath, backupPath);
+            console.log('数据库备份完成:', backupPath);
+          }
+        } catch (backupError) {
+          console.warn('数据库备份失败，继续执行强制重建:', (backupError as Error).message);
+        }
+        
         await sequelize.sync({ force: true });
         console.log('数据库模型同步完成（强制重建模式）');
       }
