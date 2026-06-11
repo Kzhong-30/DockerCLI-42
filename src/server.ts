@@ -16,6 +16,36 @@ import queueRoutes from './routes/queueRoutes';
 import statsRoutes from './routes/statsRoutes';
 import adminRoutes from './routes/adminRoutes';
 
+const DB_BACKUP_RETENTION_DAYS = 7;
+const DB_BACKUP_PREFIX = 'hospital.db.backup.';
+const DB_FILENAME = 'hospital.db';
+
+function backupDatabase(): string | null {
+  const dbPath = path.join(process.cwd(), DB_FILENAME);
+  if (!fs.existsSync(dbPath)) {
+    return null;
+  }
+
+  const backupDir = process.cwd();
+  const existingBackups = fs.readdirSync(backupDir).filter(f => f.startsWith(DB_BACKUP_PREFIX));
+  const retentionMs = Date.now() - DB_BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+  for (const oldBackup of existingBackups) {
+    const oldPath = path.join(backupDir, oldBackup);
+    const stat = fs.statSync(oldPath);
+    if (stat.mtimeMs < retentionMs) {
+      fs.unlinkSync(oldPath);
+      console.log('清理旧备份:', oldBackup);
+    }
+  }
+
+  const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const backupPath = path.join(backupDir, `${DB_BACKUP_PREFIX}${timestamp}`);
+  fs.copyFileSync(dbPath, backupPath);
+  console.log('数据库备份完成:', backupPath);
+  return backupPath;
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -97,24 +127,7 @@ async function startServer() {
         }
         
         try {
-          const dbPath = path.join(process.cwd(), 'hospital.db');
-          if (fs.existsSync(dbPath)) {
-            const backupDir = process.cwd();
-            const existingBackups = fs.readdirSync(backupDir).filter(f => f.startsWith('hospital.db.backup.'));
-            const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-            for (const oldBackup of existingBackups) {
-              const oldPath = path.join(backupDir, oldBackup);
-              const stat = fs.statSync(oldPath);
-              if (stat.mtimeMs < sevenDaysAgo) {
-                fs.unlinkSync(oldPath);
-                console.log('清理旧备份:', oldBackup);
-              }
-            }
-            const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-            const backupPath = path.join(backupDir, `hospital.db.backup.${timestamp}`);
-            fs.copyFileSync(dbPath, backupPath);
-            console.log('数据库备份完成:', backupPath);
-          }
+          backupDatabase();
         } catch (backupError) {
           console.warn('数据库备份失败，继续执行强制重建:', (backupError as Error).message);
         }

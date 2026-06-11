@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "seed": "ts-node src/seed.ts"
+    "seed": "ts-node src/seed.ts",
+    "test:core": "node scripts/test-core-api.mjs"
   },
   "dependencies": {
     "express": "^4.18.2",
